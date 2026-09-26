@@ -2,92 +2,96 @@ from __future__ import annotations
 
 import argparse
 import csv
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any
 
 import numpy as np
+from numpy.typing import NDArray
 
-from .core import InfluenceModel, read_fasta, site_scores, window
+from .core import MAX_RESIDUES, InfluenceModel, read_fasta, site_scores, window
 
 
-def generate(args: argparse.Namespace) -> None:
-    args.output.mkdir(parents=True, exist_ok=True)
-    count = 0
+def analyze(
+    input_path: Path,
+    output: Path,
+    *,
+    device: str = "cpu",
+    batch_size: int = 8,
+    mode: str = "st",
+    threshold: float = 0.5,
+    save_npy: bool = False,
+    save_png: bool = False,
+    radius: int = 50,
+) -> None:
+    if batch_size < 1 or radius < 0 or not 0 <= threshold <= 1:
+        raise ValueError(
+            "Batch size must be positive, radius nonnegative, and threshold in [0, 1]"
+        )
+    if input_path.resolve() == output.resolve():
+        raise ValueError("Input and output must be different files")
+    proteins = list(read_fasta(input_path))
+    if not proteins:
+        raise ValueError("Input FASTA contains no proteins")
+    if len({protein.identifier for protein in proteins}) != len(proteins):
+        raise ValueError("FASTA protein identifiers must be unique")
     model: InfluenceModel | None = None
-    for protein in read_fasta(args.fasta):
-        if len(protein.sequence) <= 1022:
-            targets = [(1, protein.sequence)]
+    rows: list[dict[str, str | int | float]] = []
+    artifacts = output.parent / output.stem
+    for protein in proteins:
+        targets: dict[tuple[int, str], list[int]] = {}
+        if len(protein.sequence) <= MAX_RESIDUES:
+            targets[(1, protein.sequence)] = list(protein.sites)
         else:
-            targets = list(
-                dict.fromkeys(window(protein.sequence, site) for site in protein.sites)
-            )
-        for start, sequence in targets:
+            for position in protein.sites:
+                targets.setdefault(window(protein.sequence, position), []).append(
+                    position
+                )
+        for (start, sequence), positions in targets.items():
+            if model is None:
+                model = InfluenceModel(device, batch_size)
+            matrix = model.matrix(sequence)
             name = (
                 protein.identifier
-                if start == 1 and len(protein.sequence) <= 1022
+                if len(protein.sequence) <= MAX_RESIDUES
                 else f"{protein.identifier}_{start}"
             )
-            path = args.output / f"{name}.npy"
-            if path.exists() and not args.overwrite:
-                print(f"skip {path}")
-                continue
-            if model is None:
-                model = InfluenceModel(args.device, args.batch_size)
-            np.save(path, model.matrix(sequence))
-            print(f"wrote {path} ({len(sequence)} residues)")
-            count += 1
-    print(f"Generated {count} matrices")
-
-
-def _matrix_for_site(
-    directory: Path, identifier: str, position: int
-) -> tuple[Path, int]:
-    full = directory / f"{identifier}.npy"
-    if full.exists():
-        return full, position
-    choices: list[tuple[int, Path]] = []
-    for path in directory.glob(f"{identifier}_*.npy"):
-        try:
-            start = int(path.stem.removeprefix(f"{identifier}_"))
-        except ValueError:
-            continue
-        matrix = np.load(path, mmap_mode="r")
-        if start <= position and position + 2 < start + len(matrix):
-            choices.append((start, path))
-    if not choices:
-        raise FileNotFoundError(f"No matrix contains {identifier} site {position}")
-    start, path = min(choices)
-    return path, position - start + 1
-
-
-def score(args: argparse.Namespace) -> None:
-    rows: list[dict[str, str | int | float]] = []
-    for protein in read_fasta(args.fasta):
-        for position in protein.sites:
-            path, local_position = _matrix_for_site(
-                args.matrices, protein.identifier, position
-            )
-            original, paired = site_scores(np.load(path), local_position)
-            value = original if args.mode == "st" else paired
-            rows.append(
-                {
-                    "protein_id": protein.identifier,
-                    "position": position,
-                    "motif": protein.sequence[position - 1 : position + 2],
-                    "score": value,
-                    "prediction": int(value > args.threshold),
-                    "matrix": path.name,
-                }
-            )
+            if save_npy:
+                matrix_path = artifacts / "matrices" / f"{name}.npy"
+                matrix_path.parent.mkdir(parents=True, exist_ok=True)
+                np.save(matrix_path, matrix)
+            for position in positions:
+                local_position = position - start + 1
+                st, paired = site_scores(matrix, local_position)
+                value = st if mode == "st" else paired
+                rows.append(
+                    {
+                        "protein_id": protein.identifier,
+                        "position": position,
+                        "motif": protein.sequence[position - 1 : position + 2],
+                        "score": value,
+                        "prediction": int(value > threshold),
+                        "window_start": start,
+                    }
+                )
+                if save_png:
+                    plot_profile(
+                        matrix,
+                        local_position,
+                        radius,
+                        artifacts / "profiles" / f"{protein.identifier}_{position}.png",
+                        start,
+                    )
     _write_csv(
-        args.output,
+        output,
         rows,
-        ["protein_id", "position", "motif", "score", "prediction", "matrix"],
+        ["protein_id", "position", "motif", "score", "prediction", "window_start"],
     )
-    print(f"Wrote {len(rows)} site scores to {args.output}")
+    print(f"Wrote {len(rows)} site scores to {output}")
 
 
-def _write_csv(path: Path, rows: list[dict[str, Any]], fields: list[str]) -> None:
+def _write_csv(
+    path: Path, rows: Sequence[Mapping[str, str | int | float]], fields: list[str]
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fields)
@@ -95,7 +99,9 @@ def _write_csv(path: Path, rows: list[dict[str, Any]], fields: list[str]) -> Non
         writer.writerows(rows)
 
 
-def evaluate(args: argparse.Namespace) -> None:
+def evaluate(
+    scores: Path, labels_path: Path, output: Path, fixed_threshold: float
+) -> None:
     try:
         from sklearn.metrics import (
             accuracy_score,
@@ -113,12 +119,12 @@ def evaluate(args: argparse.Namespace) -> None:
         raise RuntimeError(
             "Install the evaluation extra: uv sync --extra evaluation"
         ) from error
-    with args.labels.open(newline="", encoding="utf-8") as handle:
+    with labels_path.open(newline="", encoding="utf-8") as handle:
         labels = {
             (row["protein_id"], int(row["position"])): int(row["label"])
             for row in csv.DictReader(handle)
         }
-    with args.scores.open(newline="", encoding="utf-8") as handle:
+    with scores.open(newline="", encoding="utf-8") as handle:
         scored = list(csv.DictReader(handle))
     matches = [
         (labels[key], float(row["score"]))
@@ -134,7 +140,7 @@ def evaluate(args: argparse.Namespace) -> None:
     fpr, tpr, thresholds = roc_curve(truth, values)
     optimal = float(thresholds[int(np.argmax(tpr - fpr))])
     report: list[dict[str, str | int | float]] = []
-    for name, threshold in (("fixed", args.threshold), ("youden", optimal)):
+    for name, threshold in (("fixed", fixed_threshold), ("youden", optimal)):
         predicted = (
             values > threshold if name == "fixed" else values >= threshold
         ).astype(int)
@@ -159,11 +165,17 @@ def evaluate(args: argparse.Namespace) -> None:
                 "tn": tn,
             }
         )
-    _write_csv(args.output, report, list(report[0]))
-    print(f"Wrote evaluation of {len(matches)} sites to {args.output}")
+    _write_csv(output, report, list(report[0]))
+    print(f"Wrote evaluation of {len(matches)} sites to {output}")
 
 
-def plot(args: argparse.Namespace) -> None:
+def plot_profile(
+    matrix: NDArray[np.float32],
+    position: int,
+    radius: int,
+    output: Path,
+    window_start: int,
+) -> None:
     try:
         import matplotlib
 
@@ -171,17 +183,15 @@ def plot(args: argparse.Namespace) -> None:
         import matplotlib.pyplot as plt
     except ImportError as error:
         raise RuntimeError("Install the plot extra: uv sync --extra plot") from error
-    matrix = np.load(args.matrix)
-    position = args.position
     if (
         matrix.ndim != 2
         or matrix.shape[0] != matrix.shape[1]
         or not 1 <= position <= len(matrix)
     ):
         raise ValueError("Position must be inside a square influence matrix")
-    start = max(0, position - 1 - args.radius)
-    end = min(len(matrix), position + args.radius)
-    x = np.arange(start + 1, end + 1)
+    start = max(0, position - 1 - radius)
+    end = min(len(matrix), position + radius)
+    x = np.arange(start + window_start, end + window_start)
     fig, axis = plt.subplots(figsize=(8, 4))
     axis.plot(
         x, matrix[position - 1, start:end], label="Mask site; response across sequence"
@@ -191,14 +201,14 @@ def plot(args: argparse.Namespace) -> None:
         matrix[start:end, position - 1],
         label="Mask across sequence; response at site",
     )
-    axis.axvline(position, color="darkorange", linestyle="--")
+    axis.axvline(position + window_start - 1, color="darkorange", linestyle="--")
     axis.set(xlabel="Residue position", ylabel="Embedding change (L2)")
     axis.legend()
     fig.tight_layout()
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(args.output, dpi=200)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output, dpi=200)
     plt.close(fig)
-    print(f"Wrote {args.output}")
+    print(f"Wrote {output}")
 
 
 def main() -> None:
@@ -206,50 +216,42 @@ def main() -> None:
         prog="maskngly",
         description="ESM-2 influence analysis for N-glycosylation sites",
     )
-    commands = parser.add_subparsers(dest="command", required=True)
-    generate_parser = commands.add_parser(
-        "generate", help="Generate ESM-2 influence matrices from FASTA"
+    parser.add_argument("--input", type=Path, required=True, help="Protein FASTA file")
+    parser.add_argument("--output", type=Path, required=True, help="Site scores CSV")
+    parser.add_argument(
+        "--save-npy", action="store_true", help="Save computed influence matrices"
     )
-    generate_parser.add_argument("fasta", type=Path)
-    generate_parser.add_argument(
-        "--output", type=Path, default=Path("outputs/matrices")
+    parser.add_argument(
+        "--save-png", action="store_true", help="Save one profile per candidate site"
     )
-    generate_parser.add_argument("--device", default="cpu")
-    generate_parser.add_argument("--batch-size", type=int, default=8)
-    generate_parser.add_argument("--overwrite", action="store_true")
-    generate_parser.set_defaults(run=generate)
-    score_parser = commands.add_parser(
-        "score", help="Score FASTA sites from saved matrices"
+    parser.add_argument("--device", default="cpu")
+    parser.add_argument("--batch-size", type=int, default=8)
+    parser.add_argument("--mode", choices=("st", "paired"), default="st")
+    parser.add_argument("--threshold", type=float, default=0.5)
+    parser.add_argument("--radius", type=int, default=50)
+    parser.add_argument(
+        "--labels", type=Path, help="Optional labels CSV for evaluation"
     )
-    score_parser.add_argument("fasta", type=Path)
-    score_parser.add_argument("--matrices", type=Path, default=Path("outputs/matrices"))
-    score_parser.add_argument("--output", type=Path, default=Path("outputs/scores.csv"))
-    score_parser.add_argument("--mode", choices=("st", "paired"), default="st")
-    score_parser.add_argument("--threshold", type=float, default=0.5)
-    score_parser.set_defaults(run=score)
-    eval_parser = commands.add_parser(
-        "evaluate", help="Evaluate score CSV against binary labels"
-    )
-    eval_parser.add_argument("scores", type=Path)
-    eval_parser.add_argument("labels", type=Path)
-    eval_parser.add_argument(
-        "--output", type=Path, default=Path("outputs/evaluation.csv")
-    )
-    eval_parser.add_argument("--threshold", type=float, default=0.5)
-    eval_parser.set_defaults(run=evaluate)
-    plot_parser = commands.add_parser(
-        "plot", help="Plot both directions of a saved matrix"
-    )
-    plot_parser.add_argument("matrix", type=Path)
-    plot_parser.add_argument(
-        "position", type=int, help="1-based position within the matrix"
-    )
-    plot_parser.add_argument("--radius", type=int, default=50)
-    plot_parser.add_argument("--output", type=Path, default=Path("outputs/profile.png"))
-    plot_parser.set_defaults(run=plot)
     args = parser.parse_args()
     try:
-        args.run(args)
+        analyze(
+            args.input,
+            args.output,
+            device=args.device,
+            batch_size=args.batch_size,
+            mode=args.mode,
+            threshold=args.threshold,
+            save_npy=args.save_npy,
+            save_png=args.save_png,
+            radius=args.radius,
+        )
+        if args.labels is not None:
+            evaluate(
+                args.output,
+                args.labels,
+                args.output.with_name(f"{args.output.stem}_evaluation.csv"),
+                args.threshold,
+            )
     except (OSError, ValueError, RuntimeError) as error:
         parser.exit(1, f"error: {error}\n")
 

@@ -1,29 +1,39 @@
 # MaskNGly
 
-MaskNGly measures ESM-2 embedding changes after masking individual residues. Its CLI generates influence matrices, scores N-X-S/T candidate sites, evaluates binary labels, and plots matrix profiles.
+MaskNGly measures ESM-2 embedding changes after masking individual residues and scores N-X-S/T candidate sites.
 
 ## Setup
 
-Requires Python 3.11 or 3.12. Matrix generation downloads the `esm2_t33_650M_UR50D` model on first use and can require substantial memory. Use `--device cuda` when CUDA is available.
+If uv is not installed, run `curl -LsSf https://astral.sh/uv/install.sh | sh` on macOS/Linux; see the [installation guide](https://docs.astral.sh/uv/getting-started/installation/) for other platforms.
+
+Requires Python 3.11 or 3.12. The `esm2_t33_650M_UR50D` weights are downloaded on first use. Use `--device cuda` when CUDA is available.
 
 ```bash
-uv sync --extra inference --extra evaluation --extra plot
-uv run maskngly --help
+uv sync --extra inference --extra plot --extra evaluation
 ```
 
-## Workflow
+## Usage
 
-FASTA headers may specify 1-based candidate N positions as `Sites: 2,15`; otherwise canonical N-X-S/T sites are detected. For sequences over 1,022 residues, generation saves model-sized windows named `<id>_<start>.npy` around specified sites.
+The example contains the 193-residue human erythropoietin precursor ([UniProt P01588](https://www.uniprot.org/uniprotkb/P01588/entry), sequence version 1). Candidate sites are detected at positions 51, 65, and 110 using full precursor numbering.
 
 ```bash
-uv run maskngly generate examples/proteins.fasta --output outputs/matrices --device cpu
-uv run maskngly score examples/proteins.fasta --matrices outputs/matrices --output outputs/scores.csv
-uv run maskngly evaluate outputs/scores.csv examples/labels.csv --output outputs/evaluation.csv
-uv run maskngly plot outputs/matrices/example_protein.npy 2 --output outputs/profile.png
+uv run maskngly --input examples/P01588.fasta --output outputs/scores.csv
 ```
 
-`score` uses the S/T-mask response at N, min–max normalized across the full row, and predicts positive above 0.5. `--mode paired` averages this with the N-mask response at S/T. Scores describe embedding influence, not probabilities. `evaluate` reports fixed-threshold and Youden-threshold metrics; use a separate validation set before adopting a tuned threshold.
+Each run computes influence matrices and writes site scores to the CSV. Add `--save-npy` to retain the matrices and `--save-png` to export a profile for each candidate site:
 
-Labels CSV columns: `protein_id,position,label` (binary `0` or `1`). `plot` position is 1-based within the saved matrix. Run `uv build` to create distributable wheel and source archives.
+```bash
+uv run maskngly --input examples/P01588.fasta --output outputs/scores.csv --save-npy --save-png
+```
+
+With this output path, matrices are saved under `outputs/scores/matrices/` and profiles under `outputs/scores/profiles/`. Profile axes use 1-based protein positions. `--radius` controls the profile window (default: 50 residues).
+
+FASTA headers may specify candidate N positions as `Sites: 51,65,110`; otherwise N-X-S/T sites are detected automatically. Sequences over 1,022 residues use a model-sized window around each candidate site. CSV columns include the protein ID, position, motif, score, prediction, and window start.
+
+Scores use the S/T-mask response at N, min–max normalized across the full row, and predict positive above `--threshold 0.5`. `--mode paired` averages both directional responses. Scores measure embedding influence. `--batch-size` defaults to 8; `--device` defaults to `cpu`.
+
+Add `--labels labels.csv` to write fixed-threshold and Youden-threshold metrics to `outputs/scores_evaluation.csv`. Labels use `protein_id,position,label` with both binary classes present. Validate tuned thresholds on a separate dataset.
+
+Run `uv run maskngly --help` for all options and `uv build` to build distribution archives.
 
 **Source repository:** GitHub link coming soon.
