@@ -123,7 +123,19 @@ class InfluenceModel:
             ) from error
         if device.startswith("cuda") and not torch.cuda.is_available():
             raise ValueError("CUDA requested but not available")
-        model, alphabet = esm.pretrained.esm2_t33_650M_UR50D()
+        model_name = "esm2_t33_650M_UR50D"
+        base_url = "https://dl.fbaipublicfiles.com/fair-esm"
+        model_data = torch.hub.load_state_dict_from_url(
+            f"{base_url}/models/{model_name}.pt", map_location="cpu", progress=True
+        )
+        regression_data = torch.hub.load_state_dict_from_url(
+            f"{base_url}/regression/{model_name}-contact-regression.pt",
+            map_location="cpu",
+            progress=True,
+        )
+        model, alphabet = esm.pretrained.load_model_and_alphabet_core(
+            model_name, model_data, regression_data
+        )
         self.model = model.eval().to(device)
         self.convert = alphabet.get_batch_converter()
         self.torch = torch
