@@ -30,6 +30,8 @@ With this output path, matrices are saved under `outputs/scores/matrices/` and p
 
 FASTA headers may specify candidate N positions as `Sites: 51,65,110`; otherwise N-X-S/T sites are detected automatically. Sequences over 1,022 residues use a model-sized window around each candidate site. CSV columns include the protein ID, position, motif, score, prediction, and window start.
 
+Sequences containing unsupported residues, including `X` or `x`, are skipped with a warning. Analysis continues with valid sequences; the command exits with an error if none remain.
+
 Scores use the S/T-mask response at N, min–max normalized across the full row, and predict positive above `--threshold 0.5`. `--mode paired`: averages of bidirectional coupling. `--batch-size` defaults to 8; `--device` defaults to `cpu`.
 
 Add `--labels labels.csv` to write fixed-threshold and Youden-threshold metrics to `outputs/scores_evaluation.csv`. Labels use `protein_id,position,label` with both binary classes present. Validate tuned thresholds on a separate dataset.

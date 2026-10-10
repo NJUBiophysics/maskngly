@@ -31,7 +31,7 @@ def analyze(
         raise ValueError("Input and output must be different files")
     proteins = list(read_fasta(input_path))
     if not proteins:
-        raise ValueError("Input FASTA contains no proteins")
+        raise ValueError("Input FASTA contains no valid protein sequences")
     if len({protein.identifier for protein in proteins}) != len(proteins):
         raise ValueError("FASTA protein identifiers must be unique")
     model: InfluenceModel | None = None

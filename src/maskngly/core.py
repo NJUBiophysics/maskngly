@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import sys
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -40,7 +41,8 @@ def read_fasta(path: Path) -> Iterator[Protein]:
                 continue
             if line.startswith(">"):
                 if identifier is not None:
-                    yield _protein(identifier, "".join(parts), sites)
+                    if (protein := _protein(identifier, "".join(parts), sites)) is not None:
+                        yield protein
                 header = line[1:]
                 name, separator, site_text = header.partition("Sites:")
                 names = name.strip().split()
@@ -60,18 +62,26 @@ def read_fasta(path: Path) -> Iterator[Protein]:
             else:
                 parts.append(line)
     if identifier is not None:
-        yield _protein(identifier, "".join(parts), sites)
+        if (protein := _protein(identifier, "".join(parts), sites)) is not None:
+            yield protein
 
 
-def _protein(identifier: str, sequence: str, sites: tuple[int, ...] | None) -> Protein:
+def _protein(
+    identifier: str, sequence: str, sites: tuple[int, ...] | None
+) -> Protein | None:
     sequence = sequence.upper()
     invalid = sorted(set(sequence) - AMINO_ACIDS)
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", identifier):
         raise ValueError(f"Invalid protein identifier: {identifier!r}")
-    if invalid or len(sequence) < 3:
-        raise ValueError(
-            f"Invalid protein {identifier!r}: unsupported residues {invalid}"
+    if invalid:
+        print(
+            f"warning: skipping protein {identifier!r}: unsupported residues {invalid}",
+            file=sys.stderr,
+            flush=True,
         )
+        return None
+    if len(sequence) < 3:
+        raise ValueError(f"Invalid protein {identifier!r}: fewer than 3 residues")
     selected = candidate_sites(sequence) if sites is None else sites
     if any(position < 1 or position + 2 > len(sequence) for position in selected):
         raise ValueError(f"Invalid site position for {identifier}")
