@@ -26,9 +26,9 @@ Each run computes co-evolutionary coupling matrices and writes site scores to th
 uv run maskngly --input examples/P01588.fasta --output outputs/scores.csv --save-npy --save-png
 ```
 
-With this output path, matrices are saved under `outputs/scores/matrices/` and profiles under `outputs/scores/profiles/`. Profile axes use 1-based protein positions. `--radius` controls the profile window (default: 50 residues).
+With this output path, matrices are saved under `outputs/scores/matrices/` and profiles under `outputs/scores/profiles/`, using numeric filenames such as `000000001.npy` and `000000001.png`. CSV columns `npy_path` and `png_path` are relative to the CSV directory and are empty when the corresponding export is disabled. Sites in the same sequence window share one matrix file. Profile axes use 1-based protein positions. `--radius` controls the profile window (default: 50 residues).
 
-FASTA headers may specify candidate N positions as `Sites: 51,65,110`; otherwise N-X-S/T sites are detected automatically. Sequences over 1,022 residues use a model-sized window around each candidate site. CSV columns include the protein ID, position, motif, score, prediction, and window start.
+FASTA identifiers are the first whitespace-delimited token after `>` and are preserved exactly in the CSV `protein_id` column, including punctuation. Headers may specify candidate N positions as `Sites: 51,65,110`; otherwise N-X-S/T sites are detected automatically. Sequences over 1,022 residues use a model-sized window around each candidate site. CSV columns also include position, motif, score, prediction, and window start.
 
 Sequences containing unsupported residues, including `X` or `x`, are skipped with a warning. Analysis continues with valid sequences; the command exits with an error if none remain.
 

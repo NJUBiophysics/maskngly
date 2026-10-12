@@ -37,6 +37,7 @@ def analyze(
     model: InfluenceModel | None = None
     rows: list[dict[str, str | int | float]] = []
     artifacts = output.parent / output.stem
+    matrix_count = 0
     for protein in proteins:
         targets: dict[tuple[int, str], list[int]] = {}
         if len(protein.sequence) <= MAX_RESIDUES:
@@ -50,16 +51,13 @@ def analyze(
             if model is None:
                 model = InfluenceModel(device, batch_size)
             matrix = model.matrix(sequence)
-            name = (
-                protein.identifier
-                if len(protein.sequence) <= MAX_RESIDUES
-                else f"{protein.identifier}_{start}"
-            )
+            matrix_count += 1
+            matrix_path = artifacts / "matrices" / f"{matrix_count:09d}.npy"
             if save_npy:
-                matrix_path = artifacts / "matrices" / f"{name}.npy"
                 matrix_path.parent.mkdir(parents=True, exist_ok=True)
                 np.save(matrix_path, matrix)
             for position in positions:
+                profile_path = artifacts / "profiles" / f"{len(rows) + 1:09d}.png"
                 local_position = position - start + 1
                 st, paired = site_scores(matrix, local_position)
                 value = st if mode == "st" else paired
@@ -71,6 +69,16 @@ def analyze(
                         "score": value,
                         "prediction": int(value > threshold),
                         "window_start": start,
+                        "png_path": (
+                            profile_path.relative_to(output.parent).as_posix()
+                            if save_png
+                            else ""
+                        ),
+                        "npy_path": (
+                            matrix_path.relative_to(output.parent).as_posix()
+                            if save_npy
+                            else ""
+                        ),
                     }
                 )
                 if save_png:
@@ -78,13 +86,22 @@ def analyze(
                         matrix,
                         local_position,
                         radius,
-                        artifacts / "profiles" / f"{protein.identifier}_{position}.png",
+                        profile_path,
                         start,
                     )
     _write_csv(
         output,
         rows,
-        ["protein_id", "position", "motif", "score", "prediction", "window_start"],
+        [
+            "protein_id",
+            "position",
+            "motif",
+            "score",
+            "prediction",
+            "window_start",
+            "png_path",
+            "npy_path",
+        ],
     )
     print(f"Wrote {len(rows)} site scores to {output}")
 

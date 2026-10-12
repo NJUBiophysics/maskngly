@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 import sys
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -71,8 +70,8 @@ def _protein(
 ) -> Protein | None:
     sequence = sequence.upper()
     invalid = sorted(set(sequence) - AMINO_ACIDS)
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", identifier):
-        raise ValueError(f"Invalid protein identifier: {identifier!r}")
+    if not identifier:
+        raise ValueError("FASTA header contains no protein identifier")
     if invalid:
         print(
             f"warning: skipping protein {identifier!r}: unsupported residues {invalid}",
