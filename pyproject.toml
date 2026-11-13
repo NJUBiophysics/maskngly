@@ -3,6 +3,8 @@ name = "maskngly"
 version = "0.1.0"
 description = "ESM-2 single-mask influence analysis for protein N-glycosylation sites"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11,<3.13"
 dependencies = ["numpy>=1.26,<3"]
 
