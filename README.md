@@ -9,7 +9,7 @@ This package have been tested on following software and hardware environment:
 1. OS: Ubuntu 24.04.5 LTS x86_64, kernel: 6.8.0-147-generic, GPU: NVIDIA GeForce RTX 3060 12G with Driver Version: 595.99.02 CUDA Version: 13.2
 2. OS: macOS 27.3 arm64, kernel: Darwin 27.3.0, CPU: Apple M4 Pro with 14 cores (10 performance + 4 efficiency), RAM: 48 GB.
 
-Package versions we used for tests are recorded in `uv.lock`, following the instructions below should give you exactly the same version we use.
+Package versions we used for tests are recorded in `uv.lock`, following the instructions below should give you exactly the same versions we uses.
 
 ### Setup guide
 
