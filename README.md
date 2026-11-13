@@ -48,7 +48,9 @@ With this output path, matrices are saved under `outputs/scores/matrices/` and p
 
 
 This demo takes 28.30 seconds wall time on a M4 Pro MacBook CPU for inference. ESM weights are downloaded when running inference for the first time, it's about 2.5G so actual run time depends mainly on network situation.
-__Expected output (csv)__
+
+__Expected outputs (csv)__
+
 ```csv
 rotein_id,position,motif,score,prediction,window_start,png_path,npy_path
 P01588,51,NIT,0.7497142055541952,1,1,P01588-paired-timed/profiles/000000001.png,P01588-paired-timed/matrices/000000001.npy
@@ -56,14 +58,12 @@ P01588,65,NIT,0.8002413310333022,1,1,P01588-paired-timed/profiles/000000002.png,
 P01588,110,NSS,0.761004865831505,1,1,P01588-paired-timed/profiles/000000003.png,P01588-paired-timed/matrices/000000001.npy
 ```
 
-FASTA identifiers are the first whitespace-delimited token after `>` and are preserved exactly in the CSV `protein_id` column, including punctuation. Headers may specify candidate N positions as `Sites: 51,65,110`; otherwise N-X-S/T sites are detected automatically. Sequences over 1,022 residues use a model-sized window around each candidate site. CSV columns also include position, motif, score, prediction, and window start.
+FASTA identifiers are the first whitespace-delimited token after `>` and are preserved exactly in the CSV `protein_id` column, including punctuation. Headers may specify candidate N positions as `Sites: 51,65,110`; otherwise N-X-S/T sites are detected automatically. Sequences over 1,022 residues use a model-sized window around each candidate site.
 
-Sequences containing unsupported residues, including `X` or `x`, are skipped with a warning. Analysis continues with valid sequences; the command exits with an error if none remain.
+Sequences containing unsupported residues, including `X`, are skipped with a warning. Analysis continues with valid sequences; the command exits with an error if none remain.
 
 Scores use the S/T-mask response at N, min–max normalized across the full row, and predict positive above `--threshold 0.5`. `--mode paired`: averages of bidirectional coupling. `--batch-size` defaults to 8; `--device` defaults to `cpu`.
 
-Add `--labels labels.csv` to write fixed-threshold and Youden-threshold metrics to `outputs/scores_evaluation.csv`. Labels use `protein_id,position,label` with both binary classes present. Validate tuned thresholds on a separate dataset.
+Add `--labels labels.csv` to write fixed-threshold and Youden-threshold metrics to `outputs/scores_evaluation.csv`. Labels use `protein_id,position,label` with both binary classes present.
 
 Run `uv run maskngly --help` for all options and `uv build` to build distribution archives.
-
-**Source repository:** GitHub link coming soon.
