@@ -11,7 +11,7 @@ This package have been tested on following software and hardware environment:
 
 Package versions we used for tests are recorded in `uv.lock`, following the instructions below should give you exactly the same version we use.
 
-### Setup guild
+### Setup guide
 
 If `uv` is not installed, run `curl -LsSf https://astral.sh/uv/install.sh | sh` on macOS/Linux; see the [installation guide](https://docs.astral.sh/uv/getting-started/installation/) for other platforms.
 
