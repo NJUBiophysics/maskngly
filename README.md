@@ -5,11 +5,24 @@ MaskNGly measures ESM-2 embedding changes after masking individual residues and 
 ## Setup
 ### System requirements
 
+
 This package have been tested on following software and hardware environment:
 1. OS: Ubuntu 24.04.5 LTS x86_64, kernel: 6.8.0-147-generic, GPU: NVIDIA GeForce RTX 3060 12G with Driver Version: 595.99.02 CUDA Version: 13.2
 2. OS: macOS 27.3 arm64, kernel: Darwin 27.3.0, CPU: Apple M4 Pro with 14 cores (10 performance + 4 efficiency), RAM: 48 GB.
 
 Package versions we used for tests are recorded in `uv.lock`, following the instructions below should give you exactly the same versions we used.
+
+| Software | Installed version |
+|---|---|
+| Python | `3.12.12` |
+| MaskNGly | `0.1.0` — commit `32140b4` |
+| fair-esm | `2.0.0` |
+| PyTorch | `2.14.0` |
+| NumPy | `2.5.3` |
+| Matplotlib | `3.11.2` |
+| scikit-learn | `1.9.1` |
+| SciPy | `1.18.1` |
+| tqdm | `4.70.1` |
 
 ### Setup guide
 
@@ -67,3 +80,6 @@ Scores use the S/T-mask response at N, min–max normalized across the full row,
 Add `--labels labels.csv` to write fixed-threshold and Youden-threshold metrics to `outputs/scores_evaluation.csv`. Labels use `protein_id,position,label` with both binary classes present.
 
 Run `uv run maskngly --help` for all options and `uv build` to build distribution archives.
+
+## Reproduction instructions
+Scripts for reproduction are located https://box.nju.edu.cn/d/7aa0a97985b3492eaa09/?p=%2F&mode=list
